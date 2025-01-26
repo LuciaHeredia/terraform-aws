@@ -33,10 +33,10 @@ ebs-volume-module/
 -   To use this module in your Terraform configuration, create a *module block* in your *main.tf* file and insert the variables:
 ```
 module "<NAME>" {
-source = "./ebs-volume-module"
-
-ami_id           = "ami-0884d2865dbe9de4b" # ubuntu 22.04
-instance_type    = "t2.micro"
+    source = "./ebs-volume-module"
+    
+    ami_id           = "ami-0884d2865dbe9de4b" # ubuntu 22.04
+    instance_type    = "t2.micro"
 }
 ```
 -   To run this example execute:
