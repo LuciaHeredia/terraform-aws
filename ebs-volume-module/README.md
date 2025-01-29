@@ -20,14 +20,14 @@ ebs-volume-module/
     Default output format [None]:
     ```
 2. Create a directory and inside create the following files: 
--   main.tf: 
-    - Launch an EC2 instance with a specified: **region**, **AMI**, **instance type**, **root volume size**, **tags**. 
-    - Create an additional EBS volume to the instance with: **availability zone**, **size**, **volume type**, **tags**.
-    - Mount the EBS volume to the instance: **device name**, **volume id**, **instance id**.
--   variables.tf:
-    - **region**, **AMI**, **instance type**.
--   outputs.tf:
-    - **instance id**, **instance public id**.
+    -   main.tf: 
+        - Launch an EC2 instance with a specified: **region**, **AMI**, **instance type**, **root volume size**, **tags**. 
+        - Create an additional EBS volume to the instance with: **availability zone**, **size**, **volume type**, **tags**.
+        - Mount the EBS volume to the instance: **device name**, **volume id**, **instance id**.
+    -   variables.tf:
+        - **region**, **AMI**, **instance type**.
+    -   outputs.tf:
+        - **instance id**, **instance public id**.
 
 ## Provision Instructions:
 -   To use this module in your Terraform configuration, create a *module block* in *main.tf* of your root module and insert the variables:
