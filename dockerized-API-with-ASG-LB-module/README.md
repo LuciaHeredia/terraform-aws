@@ -13,7 +13,13 @@ dockerized-API-with-ASG-LB-module/
         -   Setting up Terraform Configuration  
         -   Defining the Docker image 
         -   Configuring the Docker container  
-    - To test this, in **Provision Instructions** bellow, use only sections: *Module* and *Dockerized API Service*, and run.
+    - To test this:
+        -   In **Provision Instructions** bellow, use only the sections *Module* and *Dockerized API Service*, and run.
+        -   To see the running image use:
+            ```
+            $ docker ps
+            ```
+        -   To access the API service, paste in your browser: http://localhost:8000/
 2. Set up an Auto Scaling Group ASG for the Dockerized service, enabling automatic scaling based on demand:
     -   ???
 3. Implement a Load Balancer to distribute traffic among instances in the ASG:
@@ -29,11 +35,10 @@ dockerized-API-with-ASG-LB-module/
         source = "./dockerized-API-with-ASG-LB-module"
 
         # Dockerized API Service
-        provider_source = "kreuzwerker/docker"
-        provider_version = "~> 2.13.0"
+        # (providers source and version must be declared directly in main.tf)
         image_name = "nginx:latest"
         image_keep_locally = false 
-        container_name = "dockerized-API-service"
+        container_name = "api-service-container"
         container_port_internal = 80
         container_port_external = 8000
     }

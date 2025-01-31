@@ -1,13 +1,5 @@
 ##### Dockerized API service input:
 
-variable "provider_source" {
-  type = string
-}
-
-variable "provider_version" {
-  type = string
-}
-
 variable "image_name" {
   type = string
 }
