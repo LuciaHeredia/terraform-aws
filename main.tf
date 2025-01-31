@@ -10,3 +10,21 @@
     ebs_vol_size = 2 # in GB
     device_name_for_ebs_mount = "/dev/sdf"
 }*/
+
+module "dockerized-API-with-ASG-LB-module" {
+    # Module
+    source = "./dockerized-API-with-ASG-LB-module"
+
+    # Dockerized API Service
+    provider_source = "kreuzwerker/docker"
+    provider_version = "~> 2.13.0"
+    image_name = "nginx:latest"
+    image_keep_locally = false 
+    container_name = "dockerized-API-service"
+    container_port_internal = 80
+    container_port_external = 8000
+
+    # EC2
+    region_name = "us-east-2"
+
+}
