@@ -3,29 +3,21 @@
 ```
 dockerized-API-with-ASG-LB-module/
 ├── main.tf
-├── variables.tf
-└── outputs.tf
+└── variables.tf
 ```
 
 ## Provision Steps:
 1. Utilize a Docker image from a specified Docker repository: 
     -   Using Terraform to deploy an **Nginx service** in a **Docker container** involves several steps: 
-        -   Setting up *Docker provider* in Terraform Configuration  
-        -   Defining the **Docker image**
-        -   Configuring the **Docker container**  
-    - To test this:
-        -   In *Provision Instructions* bellow, use only the sections *Module* and *Dockerized API Service*, and run.
-        -   To see the running image use:
-            ```
-            $ docker ps
-            ```
-        -   To access the API service, paste in your browser: http://localhost:8000/
+        -   Setting up *Docker provider* in *Terraform Configuration*.
+        -   Defining the **Docker Image**. Includes: **Image name**.
 2. Set up **AWS** Configuration:
-    -   Setting up *AWS provider* in Terraform Configuration.
+    -   Setting up *AWS provider* in *Terraform Configuration*.
     -   Set your **AWS** configuration with your **IAM user SSH key** and **region**.
-2. Set up **Elastic Container Registry (ECR)** to simplify the process of storing, managing, and deploying containerized applications on **AWS**.
 3. Set up **ECS**:
-    -   ???
+    -   *ECS cluster* - This cluster will host your containerized application.
+    -   *ECS task definition* - It specify how your containers should run within the *ECS cluster*. Includes: **Docker image** from a repository, **CPU**, **memory requirements**, **networking configuration**.
+    -   *ECS service* - This service runs and maintains your desired number of tasks simultaneously in the ECS cluster.
 4. Set up an Auto Scaling Group ASG for the Dockerized service, enabling automatic scaling based on demand:
     -   ???
 5. Implement a Load Balancer to distribute traffic among instances in the ASG:
@@ -39,13 +31,6 @@ dockerized-API-with-ASG-LB-module/
     module "<NAME>" {
         # Module
         source = "./dockerized-API-with-ASG-LB-module"
-
-        # Dockerized API Service
-        image_name = "nginx:latest"
-        image_keep_locally = false 
-        container_name = "api-service-container"
-        container_port_internal = 80
-        container_port_external = 8000
     }
     ```
 -   To run this example execute:

@@ -1,4 +1,4 @@
-##### Terraform Configurations: Docker, AWS
+#################### Terraform Configurations: Docker, AWS
 
 terraform {
   required_providers {
@@ -13,40 +13,51 @@ terraform {
   }
 }
 
+# Docker configurations
 provider "docker" {}
 
+# AWS configurations
 provider "aws" {
   region  = "us-east-2"
   #access_key = "enter_access_key_here" # Enter AWS IAM 
   #secret_key = "enter_secret_key_here" # Enter AWS IAM 
 }
 
-##### Dockerized API service
+#################### Docker Registry Image
 
-# Docker Image
-resource "docker_image" "api_service" {
-  name = var.image_name
-  keep_locally = var.image_keep_locally
+resource "docker_image" "my_docker_image" {
+  name = "nginx:latest"
 }
 
-# Docker Container
-resource "docker_container" "api_service_container" {
-  image = docker_image.api_service.image_id
-  name = var.container_name
-  ports {
-    internal = var.container_port_internal
-    external = var.container_port_external
-  }
+#################### AWS Configurations: ECS, ASG, ALB
+
+# ECS cluster + task + service
+resource "aws_ecs_cluster" "my_ecs_cluster" {
+  name = "my-ecs-cluster"
 }
 
-##### AWS Configurations: ECR, ECS, ASG, ALB
-
-# ECR repository
-resource "aws_ecr_repository" "my_ecr_repo" {
-  name = "app-repo"
+resource "aws_ecs_task_definition" "my_ecs_task" {
+  family                = "my-ecs-task-definition"
+  container_definitions = jsonencode([
+    {
+      name  = "my_container"
+      image = docker_image.my_docker_image.image_id
+      cpu   = 256
+      memory = 512
+      portMappings = [
+        {
+          hostPort      = 80
+          containerPort = 80
+        }
+      ]
+    }
+  ])
 }
 
-# ECS cluster
-#resource "aws_ecs_cluster" "my_ecs_cluster" {
-#  name = "my-cluster"
-#}
+resource "aws_ecs_service" "my_ecs_service" {
+  name            = "my-ecs-service"
+  cluster         = aws_ecs_cluster.my_ecs_cluster.id
+  task_definition = aws_ecs_task_definition.my_ecs_task.arn
+  desired_count   = 1
+  launch_type     = "EC2"
+}

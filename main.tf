@@ -15,12 +15,4 @@ module "dockerized-API-with-ASG-LB-module" {
     # Module
     source = "./dockerized-API-with-ASG-LB-module"
 
-    # Dockerized API Service
-    # (providers source and version must be declared directly in main.tf)
-    image_name = "nginx:latest"
-    image_keep_locally = false 
-    container_name = "api-service-container"
-    container_port_internal = 80
-    container_port_external = 8000
-
 }
