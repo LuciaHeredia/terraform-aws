@@ -23,27 +23,132 @@ provider "aws" {
   #secret_key = "enter_secret_key_here" # Enter AWS IAM 
 }
 
-#################### Docker Registry Image
+#################### Docker Image
 
 resource "docker_image" "my_docker_image" {
   name = "nginx:latest"
 }
 
-#################### AWS Configurations: ECS, ASG, ALB
+#################### AWS
 
-# ECS cluster + task + service
-resource "aws_ecs_cluster" "my_ecs_cluster" {
-  name = "my-ecs-cluster"
+# Create default VPC data
+resource "aws_vpc" "main" {
+  cidr_block = "10.0.0.0/16"
+  enable_dns_support = true
+  enable_dns_hostnames = true
 }
 
-resource "aws_ecs_task_definition" "my_ecs_task" {
-  family                = "my-ecs-task-definition"
+# Create default subnets data
+resource "aws_subnet" "public1" {
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = "10.0.1.0/24"
+  map_public_ip_on_launch = true
+  availability_zone = "us-east-2a"
+}
+resource "aws_subnet" "public2" {
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = "10.0.2.0/24"
+  map_public_ip_on_launch = true
+  availability_zone = "us-east-2b"
+}
+
+# Create internet gateway
+resource "aws_internet_gateway" "main" {
+    vpc_id = aws_vpc.main.id
+}
+
+# Create route table for public subnet
+resource "aws_route_table" "public" {
+  vpc_id = aws_vpc.main.id
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.main.id
+  }
+}
+
+resource "aws_route_table_association" "public1" {
+  subnet_id      = aws_subnet.public1.id
+  route_table_id = aws_route_table.public.id
+}
+
+resource "aws_route_table_association" "public2" {
+  subnet_id      = aws_subnet.public2.id
+  route_table_id = aws_route_table.public.id
+}
+
+# Create a security group
+resource "aws_security_group" "lb_sg" {
+  vpc_id = aws_vpc.main.id
+  description = "Security group for the Load Balancer"
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"] # Allow traffic in from all sources
+  }
+
+   egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+#################### ALB
+
+# Create Load Balancer
+resource "aws_lb" "api" {
+  name               = "api-lb"
+  internal           = false
+  load_balancer_type = "application"
+  subnets            = [aws_subnet.public1.id, aws_subnet.public2.id]
+  security_groups    = [aws_security_group.lb_sg.id]
+}
+
+# Create Target Group
+resource "aws_lb_target_group" "api" {
+  name    = "api-tg"
+  port     = 80
+  protocol = "HTTP"
+  vpc_id   = aws_vpc.main.id
+  target_type = "ip"
+}
+
+# Create Load Balancer Listener
+resource "aws_lb_listener" "http" {
+  load_balancer_arn = aws_lb.api.arn
+  port              = "80"
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.api.arn
+  }
+}
+
+#################### ECS
+
+# Create ECS cluster
+resource "aws_ecs_cluster" "main" {
+  name = "api-cluster"
+}
+
+# Create ECS task definition
+resource "aws_ecs_task_definition" "api" {
+  family                = "api-task"
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+  cpu                      = "256"
+  memory                   = "512"
   container_definitions = jsonencode([
     {
-      name  = "my_container"
-      image = docker_image.my_docker_image.image_id
+      name  = "api-container"
+      image = "${docker_image.my_docker_image.image_id}"
       cpu   = 256
       memory = 512
+      essential = true
       portMappings = [
         {
           hostPort      = 80
@@ -54,10 +159,82 @@ resource "aws_ecs_task_definition" "my_ecs_task" {
   ])
 }
 
-resource "aws_ecs_service" "my_ecs_service" {
-  name            = "my-ecs-service"
-  cluster         = aws_ecs_cluster.my_ecs_cluster.id
-  task_definition = aws_ecs_task_definition.my_ecs_task.arn
-  desired_count   = 1
-  launch_type     = "EC2"
+# Create ECS service
+resource "aws_ecs_service" "api" {
+  name            = "api-service"
+  cluster         = aws_ecs_cluster.main.id
+  task_definition = aws_ecs_task_definition.api.arn
+  desired_count   = 2
+  launch_type     = "FARGATE"
+
+  network_configuration {
+    security_groups = [aws_security_group.lb_sg.id] # TODO: another SG???
+    subnets = [aws_subnet.public1.id, aws_subnet.public2.id]
+    assign_public_ip = true
+  }
+  load_balancer {
+    target_group_arn = "${aws_lb_target_group.api.arn}" 
+    container_name   = "api-container"
+    container_port   = 80
+  }
 }
+
+#################### launch template + ASG
+
+# Create a launch template for the ECS instances
+resource "aws_launch_template" "ecs" {
+  name_prefix  = "my-ecs-lt-"
+  image_id = "ami-0884d2865dbe9de4b" # ubuntu 22.04
+  instance_type = "t2.micro"
+
+  network_interfaces {
+    associate_public_ip_address = true
+    security_groups = [aws_security_group.lb_sg.id]
+  }
+
+  tag_specifications {
+    resource_type = "instance"
+    tags = {
+      Name = "ecs-instance"
+    }
+  }
+}
+
+resource "aws_autoscaling_group" "ecs" {
+  vpc_zone_identifier = [aws_subnet.public1.id, aws_subnet.public2.id]
+  desired_capacity   = 2
+  max_size           = 4
+  min_size           = 1
+
+  launch_template {
+    id      = "${aws_launch_template.ecs.id}"
+    version = "$Latest"
+  }
+}
+
+# Auto Scaling Policy
+resource "aws_appautoscaling_target" "ecs_target" {
+  max_capacity       = 4
+  min_capacity       = 1
+  resource_id        = "service/${aws_ecs_cluster.main.name}/${aws_ecs_service.api.name}"
+  scalable_dimension = "ecs:service:DesiredCount"
+  service_namespace  = "ecs"
+}
+
+resource "aws_appautoscaling_policy" "scale_up" {
+  name               = "scale-up"
+  policy_type        = "TargetTrackingScaling"
+  resource_id        = aws_appautoscaling_target.ecs_target.resource_id
+  scalable_dimension = aws_appautoscaling_target.ecs_target.scalable_dimension
+  service_namespace  = aws_appautoscaling_target.ecs_target.service_namespace
+
+  target_tracking_scaling_policy_configuration {
+    target_value       = 50.0
+    predefined_metric_specification {
+      predefined_metric_type = "ECSServiceAverageCPUUtilization"
+    }
+    scale_in_cooldown  = 300
+    scale_out_cooldown = 300
+  }
+}
+
