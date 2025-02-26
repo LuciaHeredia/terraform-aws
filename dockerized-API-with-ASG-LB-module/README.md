@@ -1,4 +1,4 @@
-# Mission: This module provisions a Dockerized API service with Auto Scaling Group and Load Balancer.
+# This Terraform module provisions a Dockerized API service with Auto Scaling Group and Load Balancer.
 ## Structure:
 ```
 dockerized-API-with-ASG-LB-module/
@@ -19,10 +19,11 @@ dockerized-API-with-ASG-LB-module/
     -   Set up **Security Group**.
 3. Set up **Load Balancer**:
     > ALB (Application Load Balancer) for distributing traffic among instances in the **ASG**.
-    -   ???
+    -   **Load Balancer** *type*: *Application*.
+    -   Set up **Target Group**.
+    -   Set up **Listener**.
 4. Set up **ECS**:
     > ECS (Elastic Container Service) for running Docker containers.
-    -   Set up **Launch template** for the *ECS instances*.
     -   Set up **ECS cluster**.
         > This cluster will host your containerized application.
     -   Set up **ECS task definition**:
@@ -32,7 +33,9 @@ dockerized-API-with-ASG-LB-module/
         > This service runs and maintains your desired number of tasks simultaneously in the **ECS cluster**.
 5. Set up **ASG**:
     > ASG (Auto Scaling Group) to adjust the number of instances based on demand.
-    -   ???
+    -   Set up **Launch template** for the *instances*.
+    -   Set up **ASG** with **Launch template**.
+    -   Set up **Auto Scaling Policy**.
 6. Ensure that the system can scale in and out based on load:
     -   ???
 

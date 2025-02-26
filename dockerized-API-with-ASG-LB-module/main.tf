@@ -25,20 +25,21 @@ provider "aws" {
 
 #################### Docker Image
 
-resource "docker_image" "my_docker_image" {
+resource "docker_image" "nginx" {
   name = "nginx:latest"
+  keep_locally = false # removes image when destroy
 }
 
-#################### AWS
+#################### AWS: VPC + Subnets + Security Group
 
-# Create default VPC data
+# Create VPC 
 resource "aws_vpc" "main" {
   cidr_block = "10.0.0.0/16"
   enable_dns_support = true
   enable_dns_hostnames = true
 }
 
-# Create default subnets data
+# Create public subnets 
 resource "aws_subnet" "public1" {
   vpc_id            = aws_vpc.main.id
   cidr_block        = "10.0.1.0/24"
@@ -57,7 +58,7 @@ resource "aws_internet_gateway" "main" {
     vpc_id = aws_vpc.main.id
 }
 
-# Create route table for public subnet
+# Create route table for public subnets
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.main.id
   route {
@@ -96,7 +97,7 @@ resource "aws_security_group" "lb_sg" {
   }
 }
 
-#################### ALB
+#################### ALB + Target Group + Listener
 
 # Create Load Balancer
 resource "aws_lb" "api" {
@@ -113,7 +114,7 @@ resource "aws_lb_target_group" "api" {
   port     = 80
   protocol = "HTTP"
   vpc_id   = aws_vpc.main.id
-  target_type = "ip"
+  target_type = "instance"
 }
 
 # Create Load Balancer Listener
@@ -138,14 +139,14 @@ resource "aws_ecs_cluster" "main" {
 # Create ECS task definition
 resource "aws_ecs_task_definition" "api" {
   family                = "api-task"
-  network_mode             = "awsvpc"
-  requires_compatibilities = ["FARGATE"]
+  network_mode             = "bridge"
+  requires_compatibilities = ["EC2"]
   cpu                      = "256"
   memory                   = "512"
   container_definitions = jsonencode([
     {
       name  = "api-container"
-      image = "${docker_image.my_docker_image.image_id}"
+      image = "${docker_image.nginx.image_id}"
       cpu   = 256
       memory = 512
       essential = true
@@ -165,13 +166,8 @@ resource "aws_ecs_service" "api" {
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.api.arn
   desired_count   = 2
-  launch_type     = "FARGATE"
+  launch_type     = "EC2"
 
-  network_configuration {
-    security_groups = [aws_security_group.lb_sg.id] # TODO: another SG???
-    subnets = [aws_subnet.public1.id, aws_subnet.public2.id]
-    assign_public_ip = true
-  }
   load_balancer {
     target_group_arn = "${aws_lb_target_group.api.arn}" 
     container_name   = "api-container"
@@ -179,7 +175,7 @@ resource "aws_ecs_service" "api" {
   }
 }
 
-#################### launch template + ASG
+#################### Launch Template + ASG
 
 # Create a launch template for the ECS instances
 resource "aws_launch_template" "ecs" {
@@ -187,10 +183,11 @@ resource "aws_launch_template" "ecs" {
   image_id = "ami-0884d2865dbe9de4b" # ubuntu 22.04
   instance_type = "t2.micro"
 
-  network_interfaces {
-    associate_public_ip_address = true
-    security_groups = [aws_security_group.lb_sg.id]
-  }
+  user_data = base64encode(<<EOF
+  #!/bin/bash
+  echo "ECS_CLUSTER=api-cluster" >> /etc/ecs/ecs.config
+  EOF
+  )
 
   tag_specifications {
     resource_type = "instance"
@@ -200,6 +197,7 @@ resource "aws_launch_template" "ecs" {
   }
 }
 
+# Create ASG
 resource "aws_autoscaling_group" "ecs" {
   vpc_zone_identifier = [aws_subnet.public1.id, aws_subnet.public2.id]
   desired_capacity   = 2
@@ -212,7 +210,13 @@ resource "aws_autoscaling_group" "ecs" {
   }
 }
 
-# Auto Scaling Policy
+# Ensure instances are added to the target group
+resource "aws_autoscaling_attachment" "asg_tg" {
+  autoscaling_group_name = aws_autoscaling_group.ecs.id
+  lb_target_group_arn    = aws_lb_target_group.api.arn
+}
+
+# Create Auto Scaling Policy
 resource "aws_appautoscaling_target" "ecs_target" {
   max_capacity       = 4
   min_capacity       = 1
