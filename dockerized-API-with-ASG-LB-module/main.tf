@@ -23,14 +23,7 @@ provider "aws" {
   #secret_key = "enter_secret_key_here" # Enter AWS IAM 
 }
 
-#################### Docker Image
-
-resource "docker_image" "nginx" {
-  name = "nginx:latest"
-  keep_locally = false # removes image when destroy
-}
-
-#################### AWS: VPC + Subnets + Security Group
+#################### AWS: VPC + Subnets
 
 # Create VPC 
 resource "aws_vpc" "main" {
@@ -77,12 +70,16 @@ resource "aws_route_table_association" "public2" {
   route_table_id = aws_route_table.public.id
 }
 
+#################### Security Group + ALB + Target Group + Listener
+
 # Create a security group
 resource "aws_security_group" "lb_sg" {
+  name = "lb-sg"
   vpc_id = aws_vpc.main.id
   description = "Security group for the Load Balancer"
 
   ingress {
+    description = "Allow HTTP traffic"
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
@@ -90,14 +87,13 @@ resource "aws_security_group" "lb_sg" {
   }
 
    egress {
+    description = "Allow all outbound traffic"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
 }
-
-#################### ALB + Target Group + Listener
 
 # Create Load Balancer
 resource "aws_lb" "api" {
@@ -114,7 +110,7 @@ resource "aws_lb_target_group" "api" {
   port     = 80
   protocol = "HTTP"
   vpc_id   = aws_vpc.main.id
-  target_type = "instance"
+  target_type = "ip"
 }
 
 # Create Load Balancer Listener
@@ -129,7 +125,40 @@ resource "aws_lb_listener" "http" {
   }
 }
 
-#################### ECS
+#################### Security Group + ECS
+
+# Create a security group
+resource "aws_security_group" "ecs_sg" {
+  name = "ecs-sg"
+  vpc_id = aws_vpc.main.id
+  description = "Security group for ECS Cluster"
+
+  ingress {
+    description = "Allow HTTP traffic"
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"] # Allow traffic in from all sources
+  }
+
+   egress {
+    description = "Allow all outbound traffic"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+# Allow traffic from ALB security group on required port 
+resource "aws_security_group_rule" "ecs_open_to_alb" {
+  type = "ingress"
+  from_port   = 80
+  to_port     = 80
+  protocol    = "tcp"
+  source_security_group_id = aws_security_group.ecs_sg.id
+  security_group_id = aws_security_group.lb_sg.id
+}
 
 # Create ECS cluster
 resource "aws_ecs_cluster" "main" {
@@ -138,21 +167,21 @@ resource "aws_ecs_cluster" "main" {
 
 # Create ECS task definition
 resource "aws_ecs_task_definition" "api" {
-  family                = "api-task"
-  network_mode             = "bridge"
-  requires_compatibilities = ["EC2"]
-  cpu                      = "256"
-  memory                   = "512"
+  family = "api-task"
+  network_mode = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+  cpu = 256
+  memory = 512
   container_definitions = jsonencode([
     {
       name  = "api-container"
-      image = "${docker_image.nginx.image_id}"
-      cpu   = 256
+      image = "nginx:latest"
+      cpu = 256
       memory = 512
       essential = true
       portMappings = [
         {
-          hostPort      = 80
+          hostPort= 80
           containerPort = 80
         }
       ]
@@ -166,7 +195,13 @@ resource "aws_ecs_service" "api" {
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.api.arn
   desired_count   = 2
-  launch_type     = "EC2"
+  launch_type     = "FARGATE"
+
+  network_configuration {
+    subnets = [aws_subnet.public1.id, aws_subnet.public2.id]
+    security_groups    = [aws_security_group.ecs_sg.id]
+    assign_public_ip = true
+  }
 
   load_balancer {
     target_group_arn = "${aws_lb_target_group.api.arn}" 
@@ -175,46 +210,7 @@ resource "aws_ecs_service" "api" {
   }
 }
 
-#################### Launch Template + ASG
-
-# Create a launch template for the ECS instances
-resource "aws_launch_template" "ecs" {
-  name_prefix  = "my-ecs-lt-"
-  image_id = "ami-0884d2865dbe9de4b" # ubuntu 22.04
-  instance_type = "t2.micro"
-
-  user_data = base64encode(<<EOF
-  #!/bin/bash
-  echo "ECS_CLUSTER=api-cluster" >> /etc/ecs/ecs.config
-  EOF
-  )
-
-  tag_specifications {
-    resource_type = "instance"
-    tags = {
-      Name = "ecs-instance"
-    }
-  }
-}
-
-# Create ASG
-resource "aws_autoscaling_group" "ecs" {
-  vpc_zone_identifier = [aws_subnet.public1.id, aws_subnet.public2.id]
-  desired_capacity   = 2
-  max_size           = 4
-  min_size           = 1
-
-  launch_template {
-    id      = "${aws_launch_template.ecs.id}"
-    version = "$Latest"
-  }
-}
-
-# Ensure instances are added to the target group
-resource "aws_autoscaling_attachment" "asg_tg" {
-  autoscaling_group_name = aws_autoscaling_group.ecs.id
-  lb_target_group_arn    = aws_lb_target_group.api.arn
-}
+#################### ASG Policy
 
 # Create Auto Scaling Policy
 resource "aws_appautoscaling_target" "ecs_target" {

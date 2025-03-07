@@ -2,42 +2,48 @@
 ## Structure:
 ```
 dockerized-API-with-ASG-LB-module/
-├── main.tf
-└── variables.tf
+└── main.tf
 ```
+## AWS Architecture Diagram :
+<img src="pictures-README/ecs_alb_asg.png" width="700"/> <br/>
 
 ## Terraform Provision Steps:
-1. Utilize a **Docker image** from a specified **Docker repository**: 
-    -   Using Terraform to deploy an **Nginx service** in a **Docker container** involves several steps: 
-        -   Setting up *Docker provider* in *Terraform Configuration*.
-        -   Defining the **Docker Image**. Includes: *Image name*.
+1. Set up **Docker**: 
+    -   Setting up *Docker provider* in *Terraform Configuration*.
 2. Set up **AWS** Cloud:
     -   Setting up *AWS provider* in *Terraform Configuration*.
     -   Set your **AWS configuration** with your *IAM user SSH key* and *region*.
     -   Set up **VPC**.
     -   Set up **Subnets** (public, private).
-    -   Set up **Security Group**.
 3. Set up **Load Balancer**:
     > ALB (Application Load Balancer) for distributing traffic among instances in the **ASG**.
+    -   Set up **LB Security Group**.
     -   **Load Balancer** *type*: *Application*.
     -   Set up **Target Group**.
     -   Set up **Listener**.
 4. Set up **ECS**:
     > ECS (Elastic Container Service) for running Docker containers.
+    -   Set up **ECS Security Group**.
     -   Set up **ECS cluster**.
         > This cluster will host your containerized application.
     -   Set up **ECS task definition**:
         > It specify how your containers should run within the **ECS cluster**.
-        -   Includes: **Docker image** from a repository, *CPU*, *memory requirements*, *networking configuration*.
+        -   Includes: **Nginx Docker image**, *CPU*, *memory requirements*, *networking configuration*.
     -   Set up **ECS service**.
         > This service runs and maintains your desired number of tasks simultaneously in the **ECS cluster**.
 5. Set up **ASG**:
     > ASG (Auto Scaling Group) to adjust the number of instances based on demand.
-    -   Set up **Launch template** for the *instances*.
-    -   Set up **ASG** with **Launch template**.
-    -   Set up **Auto Scaling Policy**.
-6. Ensure that the system can scale in and out based on load:
-    -   ???
+    -   Set up **Auto Scaling Policy** for **ECS cluster**.
+6. **Test** ECS with **Docker Image**:
+    -   After ``` $ terraform apply ```, go to the *EC2 console*, navigate to *Target Groups*, and select the **target group** associated with your **ALB**.
+    -   Copy *DNS name* and paste it in your web search to check that *NGINX* is running.
+7. **Test** scale in and out based on load:
+    -   AWS ECS Console: 
+        -   Select **cluster** and then the **service**. 
+        -   Check the *task status* to see if new tasks are being launched or stopped, indicating scale-out or scale-in actions.
+    -   Check Target Group Health: 
+        -   Go to the *EC2 console*, navigate to *Target Groups*, and select the **target group** associated with your **ALB**. 
+        -   Check the *health status* of the targets to see if new instances are being registered or unhealthy instances are being deregistered.
 
 ## Provision Instructions:
 -   To use this module in your Terraform configuration, create a *module block* in *main.tf* of your root module and insert the variables:
@@ -57,3 +63,4 @@ dockerized-API-with-ASG-LB-module/
     ```
     $ terraform destroy
     ```
+
